@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -24,7 +25,6 @@ type CloudflareAPIResponse struct {
 }
 
 func main() {
-	//print(getPublicIP())
 	apiToken := getEnv("CLOUDFLARE_API_TOKEN")
 	zoneId := getEnv("CLOUDFLARE_ZONE_ID")
 	recordName := getEnv("CLOUDFLARE_RECORD_NAME")
@@ -37,12 +37,15 @@ func main() {
 	}
 
 	for {
+		fmt.Println("Checking public IP")
 		publicIP := getPublicIP()
 		dnsRecord := getCurrentDNSRecord(zoneId, recordName, apiToken)
 		if dnsRecord.Content != publicIP {
 			fmt.Println("Public IP has changed from " + dnsRecord.Content + " to " + publicIP)
 			fmt.Println("Updating DNS record")
 			updateDNSRecord(apiToken, zoneId, dnsRecord.ID, recordName, publicIP)
+		} else {
+			fmt.Println("Public IP has not changed. Sleeping for " + checkPublicIpInterval)
 		}
 		time.Sleep(checkInterval)
 	}
@@ -70,7 +73,7 @@ func getPublicIP() string {
 		fmt.Println("Failed to read public IP response: " + err.Error())
 		os.Exit(1)
 	}
-	return string(body)
+	return strings.TrimSpace(string(body))
 }
 
 func getCurrentDNSRecord(zoneId string, recordName string, apiToken string) DNSRecord {
