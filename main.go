@@ -37,15 +37,12 @@ func main() {
 	}
 
 	for {
-		fmt.Println("Checking public IP")
 		publicIP := getPublicIP()
 		dnsRecord := getCurrentDNSRecord(zoneId, recordName, apiToken)
 		if dnsRecord.Content != publicIP {
 			fmt.Println("Public IP has changed from " + dnsRecord.Content + " to " + publicIP)
 			fmt.Println("Updating DNS record")
 			updateDNSRecord(apiToken, zoneId, dnsRecord.ID, recordName, publicIP)
-		} else {
-			fmt.Println("Public IP has not changed. Sleeping for " + checkPublicIpInterval)
 		}
 		time.Sleep(checkInterval)
 	}
