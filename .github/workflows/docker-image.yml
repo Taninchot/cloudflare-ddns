@@ -17,7 +17,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GHCR_PAT }}
 
       - name: Build the Docker image
         run: docker build . --file Dockerfile --tag ghcr.io/${{ github.actor }}/cloudflare-ddns:latest
