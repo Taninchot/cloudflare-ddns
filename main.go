@@ -32,17 +32,20 @@ func main() {
 
 	checkInterval, err := time.ParseDuration(checkPublicIpInterval + "ms")
 	if err != nil || checkInterval <= 0 {
-		fmt.Println("Invalid check interval: " + checkPublicIpInterval)
+		logWithTimestamp("Invalid check interval: " + checkPublicIpInterval)
 		os.Exit(1)
 	}
 
 	for {
+		logWithTimestamp("Checking public IP.")
 		publicIP := getPublicIP()
 		dnsRecord := getCurrentDNSRecord(zoneId, recordName, apiToken)
 		if dnsRecord.Content != publicIP {
-			fmt.Println("Public IP has changed from " + dnsRecord.Content + " to " + publicIP)
-			fmt.Println("Updating DNS record")
+			logWithTimestamp("Public IP has changed from " + dnsRecord.Content + " to " + publicIP)
+			logWithTimestamp("Updating DNS record.")
 			updateDNSRecord(apiToken, zoneId, dnsRecord.ID, recordName, publicIP)
+		} else {
+			logWithTimestamp("Public IP same as DNS record.")
 		}
 		time.Sleep(checkInterval)
 	}
@@ -52,7 +55,7 @@ func main() {
 func getEnv(key string) string {
 	value, exists := os.LookupEnv(key)
 	if !exists {
-		fmt.Println("Environment variable not found: " + key)
+		logWithTimestamp("Environment variable not found: " + key)
 		os.Exit(1)
 	}
 	return value
@@ -61,16 +64,17 @@ func getEnv(key string) string {
 func getPublicIP() string {
 	response, err := http.Get("https://ipv4.icanhazip.com")
 	if err != nil {
-		fmt.Println("Failed to get public IP: " + err.Error())
+		logWithTimestamp("Failed to get public IP: " + err.Error())
 		os.Exit(1)
 	}
 	defer closeResponseBody(response.Body)
-	body, err := io.ReadAll(response.Body)
+	bodyBytes, err := io.ReadAll(response.Body)
 	if err != nil {
-		fmt.Println("Failed to read public IP response: " + err.Error())
+		logWithTimestamp("Failed to read public IP response: " + err.Error())
+		logWithTimestamp(string(bodyBytes))
 		os.Exit(1)
 	}
-	return strings.TrimSpace(string(body))
+	return strings.TrimSpace(string(bodyBytes))
 }
 
 func getCurrentDNSRecord(zoneId string, recordName string, apiToken string) DNSRecord {
@@ -79,7 +83,7 @@ func getCurrentDNSRecord(zoneId string, recordName string, apiToken string) DNSR
 	req, err := http.NewRequest("GET", url, nil)
 
 	if err != nil {
-		fmt.Println("Failed to create request: " + err.Error())
+		logWithTimestamp("Failed to create request: " + err.Error())
 		os.Exit(1)
 	}
 
@@ -88,7 +92,7 @@ func getCurrentDNSRecord(zoneId string, recordName string, apiToken string) DNSR
 
 	response, err := client.Do(req)
 	if err != nil {
-		fmt.Println("Failed to get current DNS record: " + err.Error())
+		logWithTimestamp("Failed to get current DNS record: " + err.Error())
 		os.Exit(1)
 	}
 	defer closeResponseBody(response.Body)
@@ -99,13 +103,16 @@ func getCurrentDNSRecord(zoneId string, recordName string, apiToken string) DNSR
 		Result  []DNSRecord   `json:"result"`
 	}
 
-	err = json.NewDecoder(response.Body).Decode(&result)
+	bodyBytes, _ := io.ReadAll(response.Body)
+	err = json.Unmarshal(bodyBytes, &result)
+
 	if err != nil {
-		fmt.Println("Failed to decode response body: " + err.Error())
+		logWithTimestamp("Failed to decode response body: " + err.Error())
 		os.Exit(1)
 	}
 	if !result.Success || len(result.Result) == 0 {
-		fmt.Println("Failed to get current DNS record: " + response.Status)
+		logWithTimestamp("Failed to get current DNS record: " + response.Status)
+		logWithTimestamp(string(bodyBytes))
 		os.Exit(1)
 	}
 	return result.Result[0]
@@ -124,45 +131,54 @@ func updateDNSRecord(apiToken, zoneId, recordId, recordName, newIP string) {
 	}
 	payload, err := json.Marshal(data)
 	if err != nil {
-		fmt.Println("Failed to marshal data: " + err.Error())
+		logWithTimestamp("Failed to marshal data: " + err.Error())
 		os.Exit(1)
 	}
 
 	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(payload))
 	if err != nil {
-		fmt.Println("Failed to create request: " + err.Error())
+		logWithTimestamp("Failed to create request: " + err.Error())
 		os.Exit(1)
 	}
 
 	req.Header.Add("Authorization", "Bearer "+apiToken)
 	req.Header.Add("Content-Type", "application/json")
 
-	resp, err := client.Do(req)
+	response, err := client.Do(req)
 	if err != nil {
-		fmt.Println("Failed to update DNS record: " + err.Error())
+		logWithTimestamp("Failed to update DNS record: " + err.Error())
 		os.Exit(1)
 	}
-	defer closeResponseBody(resp.Body)
+	defer closeResponseBody(response.Body)
 
 	var result CloudflareAPIResponse
-	err = json.NewDecoder(resp.Body).Decode(&result)
+
+	bodyBytes, _ := io.ReadAll(response.Body)
+	err = json.Unmarshal(bodyBytes, &result)
+
 	if err != nil {
-		fmt.Println("Failed to decode response body: " + err.Error())
+		logWithTimestamp("Failed to decode response body: " + err.Error())
 		os.Exit(1)
 	}
 
 	if !result.Success {
-		fmt.Println("Failed to update DNS record: " + result.Errors[0].(string))
+		logWithTimestamp("Failed to update DNS record: " + result.Errors[0].(string))
+		logWithTimestamp(string(bodyBytes))
 		os.Exit(1)
 	}
 
-	fmt.Println("DNS record updated successfully")
+	logWithTimestamp("DNS record updated successfully.")
 }
 
 func closeResponseBody(Body io.ReadCloser) {
 	err := Body.Close()
 	if err != nil {
-		fmt.Println("Failed to close response body: " + err.Error())
+		logWithTimestamp("Failed to close response body: " + err.Error())
 		os.Exit(1)
 	}
+}
+
+func logWithTimestamp(message string) {
+	currentTime := time.Now().Format("Mon 02 15:04:05.000000")
+	fmt.Printf("|| %s || %s\n", currentTime, message)
 }
